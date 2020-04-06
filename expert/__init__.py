@@ -11,7 +11,7 @@ Expert aims to bridge the gap in the construction of these.
 
 from typing import Optional
 
-import sys
+import os
 
 # Author and license information
 __author__ = 'Alex Hepburn'
@@ -44,7 +44,13 @@ def setup_random_seed(seed: Optional[int] = None) -> None:
     import torch
 
     if seed is None:
-        random_seed = int(np.random.uniform() * (2**31 - 1))
+        random_seed_os = os.environ.get('EXPERT_SEED', None)
+        if random_seed_os is not None:
+            random_seed_os = random_seed_os.strip()
+            if random_seed_os.isdigit():
+                random_seed = int(random_seed_os)
+        else:
+            random_seed = int(np.random.uniform() * (2**31 - 1))
     else:
         if isinstance(seed, int):
             random_seed = seed
