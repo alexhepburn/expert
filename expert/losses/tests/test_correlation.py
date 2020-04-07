@@ -1,7 +1,7 @@
 """
-Functions and classes for correlation loss functions.
+Tests for correlation loss functions.
 """
-# Author: Alex Hepburn <ah13558@bristol.ac.uk>
+# Author: Alex Hepburn <alex.hepburn@bristol.ac.uk>
 # License: new BSD
 
 import numpy as np
