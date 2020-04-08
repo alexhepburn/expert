@@ -117,7 +117,8 @@ class GDN(nn.Module):
         gamma = torch.sqrt(gamma_init*gamma + self.reparam_offset**2)
         gamma = torch.mul(gamma, gamma)
         if apply_independently:
-            gamma = gamma[:, 0, :, :].unsqueeze(1)
+            gammas = [g[i, :, :] for i, g in enumerate(gamma)]
+            gamma = torch.stack(gammas).unsqueeze(1)
         self.gamma = nn.Parameter(gamma)
         beta = torch.ones((n_channels,))
         beta = torch.sqrt(beta + self.reparam_offset**2)
@@ -148,6 +149,10 @@ class GDN(nn.Module):
 
         if not isinstance(n_channels, int) or n_channels <= 0:
             raise TypeError('n_channels parameter must be an integer greater '
+                            'than 0.')
+
+        if not isinstance(kernel_size, int) or kernel_size <= 0:
+            raise TypeError('kernel_size parameter must be an integer greater '
                             'than 0.')
 
         if not isinstance(stride, int) or stride <= 0:
@@ -203,8 +208,8 @@ class GDN(nn.Module):
             Input parameter ``x`` is not of dtype torch.float.
 
         """
-        if x.dtype != torch.Float:
-            raise TypeError('Input x must be of dtype float.')
+        if x.dtype != torch.float32:
+            raise TypeError('Input x must be of type torch.float32.')
 
         self.clamp_parameters()
         norm_pool = F.conv2d(torch.mul(x, x), self.gamma, bias=self.beta,
