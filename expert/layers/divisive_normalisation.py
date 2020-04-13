@@ -207,6 +207,10 @@ class GDN(nn.Module):
         TypeError:
             Input parameter ``x`` is not of dtype torch.float.
 
+        Returns
+        -------
+        output : torch.Tensor
+            Output of the generalised divisive normalisation layer.
         """
         if x.dtype != torch.float32:
             raise TypeError('Input x must be of type torch.float32.')

@@ -52,6 +52,10 @@ class TestGDN():
                               initial_beta_indep)
 
     def test_validate_input(self):
+        """
+        Tests :func:`expert.layers.divisive_normalisation.GDN._validate_input`
+        function.
+        """
         n_channel_error = ('n_channels parameter must be an integer greater '
                            'than 0.')
         kernel_size_error = ('kernel_size parameter must be an integer '

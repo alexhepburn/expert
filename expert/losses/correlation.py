@@ -29,6 +29,12 @@ class PearsonCorrelation(nn.Module):
         Override the forward function in nn.Modules. Performs Pearson
         Correlation calculation between ``score`` and ``mos``
 
+        Parameters
+        ----------
+        x : torch.Tensor
+            First input vector.
+        y : torch.Tensor
+            Second input vector.
         TODO: dimensions of the input data have to agree, have to be batch wise
               and check for NaN values in the result.
         """
