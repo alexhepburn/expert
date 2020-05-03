@@ -97,6 +97,9 @@ class PerceptNet(nn.Module):
                  dims: int = 3,
                  normalisation: str = 'gdn',
                  pretrained: bool = False) -> None:
+        """
+        Constructs a ``PerceptNet`` class.
+        """
         super(PerceptNet, self).__init__()
         # TODO: pretrained weights - look where to save the weights
         assert self._validate_input(dims, normalisation, pretrained)

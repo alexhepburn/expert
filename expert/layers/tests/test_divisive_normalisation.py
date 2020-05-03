@@ -28,23 +28,21 @@ class TestGDN():
         Tests :class:`expert.layers.divisive_normalisation.GDN` class init.
         """
         assert (issubclass(edn.GDN, nn.Module))
-        assert (self.gdn.__class__.__bases__[0].__name__
-                == 'Module')
+        assert (self.gdn.__class__.__bases__[0].__name__ == 'Module')
         assert np.isclose(self.gdn.reparam_offset, 3.81e-06)
         assert np.isclose(self.gdn.beta_reparam, 0.001)
         assert self.gdn.groups == 1
         assert self.gdn_apply_independently.groups == 2
 
-        initial_gamma = torch.from_numpy(np.array([[[[0.1]], [[1.4552e-11]]],
-                                                   [[[1.4552e-10]], [[0.1]]]],
-                                                   dtype=np.float32))
+        initial_gamma = torch.from_numpy(
+            np.array([[[[0.1]], [[1.4552e-11]]], [[[1.4552e-10]], [[0.1]]]],
+                     dtype=np.float32))
         initial_beta = torch.from_numpy(np.array([1., 1.], dtype=np.float32))
         assert torch.allclose(self.gdn.gamma, initial_gamma)
         assert torch.allclose(self.gdn.beta, initial_beta)
 
-        initial_gamma_indep = torch.from_numpy(np.array([[[[0.1]]],
-                                                         [[[0.1]]]],
-                                                         dtype=np.float32))
+        initial_gamma_indep = torch.from_numpy(
+            np.array([[[[0.1]]], [[[0.1]]]], dtype=np.float32))
         initial_beta_indep = torch.from_numpy(np.array([1.], dtype=np.float32))
         assert torch.allclose(self.gdn_apply_independently.gamma,
                               initial_gamma_indep)
@@ -142,7 +140,7 @@ class TestGDN():
         ones = torch.ones((1, 2, 2, 2), dtype=torch.float32)
 
         y = self.gdn(ones)
-        true_output = ones-0.0465
+        true_output = ones - 0.0465
         assert torch.allclose(y, true_output, rtol=0.01)
 
         y = self.gdn_apply_independently(ones)

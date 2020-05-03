@@ -28,8 +28,7 @@ class TestPerceptNet():
         Tests :class:`exper.models.perceptnet.PerceptNet` class init.
         """
         assert (issubclass(emp.PerceptNet, nn.Module))
-        assert (self.net1.__class__.__bases__[0].__name__
-                == 'Module')
+        assert (self.net1.__class__.__bases__[0].__name__ == 'Module')
 
         assert isinstance(self.net1.normalisation_1, eldn.GDN)
         # check apply_independently

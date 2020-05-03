@@ -87,14 +87,17 @@ class GDN(nn.Module):
     """
 
     def __init__(self,
-                 n_channels,
-                 kernel_size=1,
-                 stride=1,
-                 padding=0,
-                 gamma_init=.1,
-                 reparam_offset=2**-18,
-                 beta_min=1e-6,
-                 apply_independently=False) -> None:
+                 n_channels: int,
+                 kernel_size: int = 1,
+                 stride: int = 1,
+                 padding: int = 0,
+                 gamma_init: float = .1,
+                 reparam_offset: float = 2**-18,
+                 beta_min: float = 1e-6,
+                 apply_independently: bool = False) -> None:
+        """
+        Constructs a ``GDN`` generalised divisive normalisation class.
+        """
         super(GDN, self).__init__()
         assert self._validate_input(n_channels, kernel_size, stride, padding,
                                     gamma_init, reparam_offset, beta_min,
@@ -125,14 +128,14 @@ class GDN(nn.Module):
         self.beta = nn.Parameter(beta)
 
     def _validate_input(self,
-                        n_channels,
-                        kernel_size,
-                        stride,
-                        padding,
-                        gamma_init,
-                        reparam_offset,
-                        beta_min,
-                        apply_independently) -> bool:
+                        n_channels: int,
+                        kernel_size: int,
+                        stride: int,
+                        padding: int,
+                        gamma_init: float,
+                        reparam_offset: float,
+                        beta_min: float,
+                        apply_independently: bool) -> bool:
         """
         Validates input of the generalised divisive normalisation class.
 
@@ -192,7 +195,8 @@ class GDN(nn.Module):
             self.beta = nn.Parameter(torch.clamp(self.beta.data,
                                                  min=self.beta_reparam))
 
-    def forward(self, x) -> torch.Tensor:
+    def forward(self,
+                x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass of the layer
 
