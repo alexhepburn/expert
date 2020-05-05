@@ -40,8 +40,6 @@ class LaplacianPyramid(nn.Module):
         self.dims = dims
         self.filt = nn.Parameter(torch.Tensor(filt), requires_grad=False)
         self.dn_filts, self.sigmas = self.DN_filters()
-        self.upsample = nn.Upsample(scale_factor=2, mode='bilinear',
-                                    align_corners=True)
 
     def DN_filters(self):
         sigmas = [0.0248, 0.0185, 0.0179, 0.0191, 0.0220, 0.2782]
@@ -90,14 +88,13 @@ class LaplacianPyramid(nn.Module):
                                             self.filt.size(3), stride=2)
             I = F.conv2d(F.pad(J, J_padding_amount, mode='reflect'), self.filt,
                          stride=2, padding=0, groups=self.dims)
-            I_up = self.upsample(I)
+            I_up = F.interpolate(I, size=[J.size(2), J.size(3)],
+                                 align_corners=True, mode='bilinear')
             I_padding_amount = conv_utils.pad([I_up.size(2), I_up.size(3)],
-                                            self.filt.size(3), stride=1)
+                                              self.filt.size(3), stride=1)
             I_up_conv = F.conv2d(F.pad(I_up, I_padding_amount, mode='reflect'),
                                  self.filt, stride=1, padding=0,
                                  groups=self.dims)
-            #if J.size() != I_up_conv.size():
-            #    I_up_conv = torch.nn.functional.interpolate(I_up_conv, [J.size(2), J.size(3)])
             out = J - I_up_conv
             out_padding_amount = conv_utils.pad(
                 [out.size(2), out.size(3)], self.dn_filts[i].size(2), stride=1)

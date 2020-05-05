@@ -7,6 +7,8 @@ padding to maintain the size of the image.
 
 from typing import List
 
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -37,7 +39,16 @@ def pad(im_size, filt_size, stride):
     padding : List[int]
         Amount of padding needed for []
     """
-    padding = [int(((stride-1)*i-stride+filt_size)/2) for i in im_size]
+    out_height = math.ceil(float(im_size[0]) / float(stride))
+    out_width  = math.ceil(float(im_size[1]) / float(stride))
+
+    pad_h = max((out_height - 1) * stride + filt_size - im_size[0], 0)
+    pad_w = max((out_width - 1) * stride + filt_size - im_size[1], 0)
+
+    pad_top = pad_h // 2
+    pad_bottom = pad_h - pad_top
+    pad_left = pad_w // 2
+    pad_right = pad_w- pad_left
 
     # Append lists to each other for use in func:`torch.nn.functional.pad`.
-    return padding*2
+    return [pad_left, pad_right, pad_top, pad_bottom]

@@ -122,6 +122,36 @@ class TestSteerablePyramid():
         Tests :func:`expert.models.pyramids.SteerablePyramid.forward` function.
         """
         expert.setup_random_seed()
-        print(TEST_INPUT)
-        print(TEST_INPUT.size())
-        assert False
+
+
+class TestLaplacianPyramid():
+    """
+    Tests :class:`expert.models.pyramids.LaplacianPyramid` class.
+    """
+    expert.setup_random_seed()
+    lp = emp.LaplacianPyramid(k=5)
+
+    def test_init(self):
+        """
+        Tests :class:`expert.models.pyramids.LaplacianPyramid` class init.
+        """
+        assert (issubclass(emp.LaplacianPyramid, nn.Module))
+        assert (self.lp.__class__.__bases__[0].__name__ == 'Module')
+
+    def test_validate_input(self):
+        """
+        Tests :func:`expert.models.pyramids.LaplacianPyramid._validate_input`
+        function.
+        """
+        return True
+
+    def test_forward(self):
+        """
+        Tests :func:`expert.models.pyramids.LaplacianPyramid.forward` function.
+        """
+        expert.setup_random_seed()
+
+        test_1 = torch.ones((1, 3, 200, 200))
+        test_2 = torch.ones((1, 3, 200, 200)) - 0.1
+        diff = self.lp.compare(test_1, test_2)
+        assert True
