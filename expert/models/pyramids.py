@@ -7,9 +7,13 @@ layers for wavelet transformations.
 
 from typing import List, Union
 
+import numpy as np
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+import expert.layers.divisive_normalisation as expert_divisive_normalisation
 
 import expert.utils.filters as filt_utils
 import expert.utils.conv as conv_utils
@@ -27,7 +31,7 @@ LAPLACIAN_FILTER = np.array([[0.0025, 0.0125, 0.0200, 0.0125, 0.0025],
 
 class LaplacianPyramid(nn.Module):
     def __init__(self, k, dims=3, filt=None, trainable=False):
-        super(lap_pyramid, self).__init__()
+        super(LaplacianPyramid, self).__init__()
         if filt is None:
             filt = np.reshape(np.tile(LAPLACIAN_FILTER, (dims, 1, 1)),
                               (dims, 1, 5, 5))
@@ -36,8 +40,6 @@ class LaplacianPyramid(nn.Module):
         self.dims = dims
         self.filt = nn.Parameter(torch.Tensor(filt), requires_grad=False)
         self.dn_filts, self.sigmas = self.DN_filters()
-        self.pad_one = nn.ReflectionPad2d(1)
-        self.pad_two = nn.ReflectionPad2d(2)
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear',
                                     align_corners=True)
 
@@ -84,16 +86,26 @@ class LaplacianPyramid(nn.Module):
         J = im
         pyr = []
         for i in range(0, self.k):
-            I = F.conv2d(self.pad_two(J), self.filt, stride=2, padding=0,
-                         groups=self.dims)
+            J_padding_amount = conv_utils.pad([J.size(2), J.size(3)],
+                                            self.filt.size(3), stride=2)
+            I = F.conv2d(F.pad(J, J_padding_amount, mode='reflect'), self.filt,
+                         stride=2, padding=0, groups=self.dims)
             I_up = self.upsample(I)
-            I_up_conv = F.conv2d(self.pad_two(I_up), self.filt, stride=1,
-                                 padding=0, groups=self.dims)
-            if J.size() != I_up_conv.size():
-                I_up_conv = torch.nn.functional.interpolate(I_up_conv, [J.size(2), J.size(3)])
+            I_padding_amount = conv_utils.pad([I_up.size(2), I_up.size(3)],
+                                            self.filt.size(3), stride=1)
+            I_up_conv = F.conv2d(F.pad(I_up, I_padding_amount, mode='reflect'),
+                                 self.filt, stride=1, padding=0,
+                                 groups=self.dims)
+            #if J.size() != I_up_conv.size():
+            #    I_up_conv = torch.nn.functional.interpolate(I_up_conv, [J.size(2), J.size(3)])
             out = J - I_up_conv
-            out_conv = F.conv2d(self.pad_one(torch.abs(out)), self.dn_filts[i],
-                         stride=1, groups=self.dims)
+            out_padding_amount = conv_utils.pad(
+                [out.size(2), out.size(3)], self.dn_filts[i].size(2), stride=1)
+            out_conv = F.conv2d(
+                F.pad(torch.abs(out), out_padding_amount, mode='reflect'),
+                self.dn_filts[i],
+                stride=1,
+                groups=self.dims)
             out_norm = out / (self.sigmas[i]+out_conv)
             pyr.append(out_norm)
             J = I
@@ -110,12 +122,11 @@ class LaplacianPyramid(nn.Module):
             sqrt = torch.sqrt(torch.mean(diff, (1, 2, 3)))
             total.append(sqrt)
         return torch.norm(torch.stack(total), 0.6)
-        #return torch.mean(torch.stack(total), dim=0)
 
 
 class LaplacianPyramidGDN(nn.Module):
     def __init__(self, k, dims=3, filt=None):
-        super(lap_pyramid_GDN, self).__init__()
+        super(LaplacianPyramidGDN, self).__init__()
         if filt is None:
             filt = np.tile(LAPLACIAN_FILTER, (dims, 1, 1))
             filt = np.reshape(np.tile(LAPLACIAN_FILTER, (dims, 1, 1)),
@@ -124,7 +135,8 @@ class LaplacianPyramidGDN(nn.Module):
         self.dims = dims
         self.filt = nn.Parameter(torch.Tensor(filt))
         self.filt.requires_grad = False
-        self.gdns = nn.ModuleList([GDN(dims, apply_independently=True) for i in range(self.k)])
+        self.gdns = nn.ModuleList([expert_divisive_normalisation.GDN(
+            dims, apply_independently=True) for i in range(self.k)])
         self.pad_one = nn.ReflectionPad2d(1)
         self.pad_two = nn.ReflectionPad2d(2)
         self.mse = nn.MSELoss(reduction='none')
