@@ -58,8 +58,8 @@ class TestStyleLoss():
         x = torch.ones((2, 1, 5, 5))
         y = torch.ones((2, 1, 5, 5)) - 0.5
 
-        true_loss = torch.from_numpy(np.array([[0.2421, 0.0], [0.2421, 0.0]],
-                                     dtype=np.float32))
+        true_loss = torch.from_numpy(
+            np.array([[0.3691, 0.2421], [0.3691, 0.2421]], dtype=np.float32))
         loss = self.style_loss(x, y, reduce_layer_dim=False, reduce_mean=False)
         assert torch.allclose(loss, true_loss, atol=0.01)
 
@@ -77,6 +77,6 @@ class TestStyleLoss():
             np.array([0.1, 0.8], dtype=np.float32))
 
         loss = self.style_loss(x, y, reduce_layer_dim=False, reduce_mean=False)
-        lambda_loss = torch.from_numpy(np.array([[0.0242, 0.0], [0.0242, 0.0]],
-                                       dtype=np.float32))
+        lambda_loss = torch.from_numpy(
+            np.array([[0.0369, 0.1937], [0.0369, 0.1937]], dtype=np.float32))
         assert torch.allclose(loss, lambda_loss, atol=0.01)

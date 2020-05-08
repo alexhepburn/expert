@@ -35,7 +35,7 @@ class StyleLoss(nn.Module):
 
     Attributes
     ----------
-    
+
     """
     def __init__(self,
                  network: nn.Module,
@@ -101,14 +101,14 @@ class StyleLoss(nn.Module):
         style : torch.Tensor
             Tensor containing style losses.
         """
-        style = torch.zeros(x.size(0), self.number_lambdas)
-        style_layer = 0
+        styles = []
         for layer in self.network:
             x, y = layer(x), layer(y)
             if isinstance(layer, self.layer_type):
                 G1, G2 = self.gram_matrix(x), self.gram_matrix(y)
-                style[:, style_layer] = F.mse_loss(
-                    G1, G2, reduction='none').mean(axis=(1, 2))
+                styles.append(F.mse_loss(
+                    G1, G2, reduction='none').mean(axis=(1, 2)))
+        style = torch.stack(styles).transpose(0, 1)
         style = style * self.lambdas
         if reduce_layer_dim:
             style = torch.mean(style, axis=1)
