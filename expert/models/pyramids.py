@@ -165,7 +165,7 @@ class LaplacianPyramidGDN(nn.Module):
             diff = (z1 - z2) ** 2
             sqrt = torch.sqrt(torch.mean(diff, (1, 2, 3)))
             total.append(sqrt)
-        return torch.mean(torch.stack(total), dim=0)
+        return torch.norm(torch.stack(total), 0.6)
 
 
 class SteerableWavelet(nn.Module):
