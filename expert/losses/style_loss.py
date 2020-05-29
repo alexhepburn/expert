@@ -109,7 +109,7 @@ class StyleLoss(nn.Module):
                 styles.append(F.mse_loss(
                     G1, G2, reduction='none').mean(axis=(1, 2)))
         style = torch.stack(styles).transpose(0, 1)
-        style = style * self.lambdas
+        style = torch.mul(style, self.lambdas)
         if reduce_layer_dim:
             style = torch.mean(style, axis=1)
         if reduce_mean:
