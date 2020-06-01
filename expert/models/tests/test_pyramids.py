@@ -6,6 +6,8 @@ Tests for pyramid based models
 
 import pytest
 
+import math
+
 import numpy as np
 
 import torch
@@ -14,7 +16,7 @@ import torch.nn.functional as F
 
 import expert
 import expert.models.pyramids as emp
-import expert.utils.filters as filt_utils
+import expert.utils.pyramid_filters as filt_utils
 
 TEST_INPUT = torch.ones((1, 1, 5, 5))
 TEST_INPUT = F.pad(TEST_INPUT, [5, 5, 5, 5], value=0.5)
@@ -34,12 +36,49 @@ class TestSteerableWavelet():
         assert (issubclass(emp.SteerableWavelet, nn.Module))
         assert (self.sw.__class__.__bases__[0].__name__ == 'Module')
 
+        assert self.sw.stages == 4
+        assert self.sw.num_orientations == 4
+        assert self.sw.twidth == 1
+
+        harmonics = torch.Tensor([1., 3.])
+        angles = torch.Tensor([0.0000, 0.7854, 1.5708, 2.3562])
+        assert torch.allclose(self.sw.harmonics, harmonics)
+        assert torch.allclose(self.sw.angles, angles)
+
     def test_validate_input(self):
         """
         Tests :func:`expert.models.pyramids.SteerableWavelet._validate_input`
         function.
         """
         return True
+
+    def test_steer_to_harmonics(self):
+        """
+        Tests :func:`expert.models.pyramids.SteerableWavelet.steer_to_harmonics`
+        function.
+        """
+
+        # All good
+        # Test with zero
+        harmonics = torch.Tensor([0., 1., 2.])
+        angles = torch.arange(0, 3+1) * math.pi / 4
+        steer = self.sw.steer_to_harmonics(harmonics, angles, phase='sin')
+        correct = torch.Tensor([[0.2384, 0.1260, 0.1260, 0.2384],
+                                [-0.3371, 0.5289, -0.1782, 0.3700],
+                                [-0.8604, 0.7809, -0.9262, 0.8467],
+                                [-0.6084, 1.0522, -0.6549, 0.0987],
+                                [0.0987, -0.6549, 1.0522, -0.6084]])
+        assert torch.allclose(correct, steer, atol=1e-4)
+
+        harmonics = torch.Tensor([1., 2., 3.])
+        steer = self.sw.steer_to_harmonics(harmonics, angles, phase='cos')
+        correct = torch.Tensor([[0.3750, 0.1768, 0.1250, -0.1768],
+                                [0.1250, 0.3536, 0.3750, 0.3536],
+                                [0.2500, 0.0000, -0.2500, 0.0000],
+                                [0.000, 0.2500, 0.0000, -0.2500],
+                                [0.3750, -0.1768, 0.1250, 0.1768],
+                                [-0.1250, 0.3535, -0.3750, 0.3536]])
+        assert torch.allclose(correct, steer, atol=1e-4)
 
     def test_forward(self):
         """
@@ -71,7 +110,7 @@ class TestSteerablePyramid():
         assert self.sw.bfilts.size() == torch.Size([10, 1, 9, 9])
 
         # Test pretrained
-        filters = filt_utils.STEERABLE_SPATIAL_FILTERS
+        filters = filt_utils.STEERABLE_SPATIAL_FILTERS_0
         assert torch.equal(self.sw_pretrained.lo0filt.data, filters['lo0filt'])
         assert torch.equal(self.sw_pretrained.hi0filt.data, filters['hi0filt'])
         assert torch.equal(self.sw_pretrained.lofilt.data, filters['lofilt'])

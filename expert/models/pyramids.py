@@ -7,6 +7,8 @@ layers for wavelet transformations.
 
 from typing import List, Union
 
+import math
+
 import numpy as np
 
 import torch
@@ -15,7 +17,7 @@ import torch.nn.functional as F
 
 import expert.layers.divisive_normalisation as expert_divisive_normalisation
 
-import expert.utils.filters as filt_utils
+import expert.utils.pyramid_filters as pyr_filts
 import expert.utils.conv as conv_utils
 
 __all__ = ['SteerableWavelet', 'SteerablePyramid', 'LaplacianPyramid',
@@ -176,14 +178,42 @@ class SteerableWavelet(nn.Module):
     is then passed through ``wavelets`` wavelet transformations, each
     with a different orientation. This is done at ``scales`` dfferent scales
     where each scale is downsampled by ``downsampled``.
+
+    stages : int, optional (default=4)
+        Number of stages to be used in the pyramid.
+    order: int, optional (default=3)
+        Defined angular functions. Angular functions are
+        `cos(theta-order\pi/(order+1))^order` (order is one less than the
+        number of orientation bands).
+    twidth : int, optional(default=1)
+        width of the transition region of the radial lowpass function in
+        octaves.
     """
-    def __init__(self):
+    def __init__(self,
+                 stages: int = 4,
+                 order: int = 3,
+                 twidth: int = 1):
         """
         Constructs a ``SteerableWavelet`` class.
         """
         super(SteerableWavelet, self).__init__()
+        assert self._validate_input(stages, order, twidth)
+        self.stages = stages
+        self.num_orientations = order + 1
+        self.twidth = twidth
 
-    def _validate_input(self):
+        if self.num_orientations % 2 == 0:
+            self.harmonics = torch.arange(0, self.num_orientations/2)*2+1
+        else:
+            self.harmonics = torch.arange(0, order)*2
+
+        self.angles = torch.arange(0, order+1) * math.pi / self.num_orientations
+        self.steer_matrix = self.steer_to_harmonics(harmonics, angles, 'sin')
+
+    def _validate_input(self,
+                        stages: int,
+                        order: int,
+                        twidth: int) -> bool:
         """
         Validates input of the steerable wavelet class.
 
@@ -198,14 +228,131 @@ class SteerableWavelet(nn.Module):
         """
         is_valid = False
 
+        if not isinstance(stages, int) or stages <= 0:
+            raise TypeError('stages parameter must be an integer greater than '
+                            '0.')
+
+        if not isinstance(order, int) or order <= 0:
+            raise TypeError('order parameter must be an integer '
+                            'greater than 0.')
+
+        if not isinstance(twidth, int) or twidth <= 0:
+            raise TypeError('twidth parameter must be an integer greater than '
+                            '0.')
+
         is_valid = True
         return is_valid
 
-    def forward(self, x: torch.tensor) -> torch.Tensor:
+    def _harmonic_column(self,
+                         harmonic: torch.Tensor,
+                         angles: torch.Tensor,
+                         phase: str) -> torch.Tensor:
+        """
+        For a singular harmonic, generates the neccesary values to compute
+        steering matrix.
+
+        FFor the description of the input parameters and exceptions raised by
+        this function, please see the documentation of the
+        :func:`expert.models.pyramids.SteerableWavelet.steer_to_harmonics`
+        function.
+
+        Returns
+        -------
+        column : torch.Tensor
+            Column to create a steer matrix for harmonic.
+        """
+        if harmonic == 0:
+                column = torch.ones(angles.size(0), 1)
+        else:
+            args = harmonic * angles
+            sin_args = torch.sin(args).unsqueeze(1)
+            cos_args = torch.cos(args).unsqueeze(1)
+            if phase is 'sin':
+                column = torch.cat([sin_args, -cos_args], axis=1)
+            else:
+                column = torch.cat([cos_args, sin_args], axis=1)
+
+        return column
+
+    def steer_to_harmonics(self,
+                           harmonics: torch.Tensor,
+                           angles: torch.Tensor,
+                           phase: str = 'sin') -> torch.Tensor:
+        """
+        Maps a directional basis set onto the angular Fourier harmonics.
+
+        Parameters
+        ----------
+        harmonics : torch.Tensor
+        angles : torch.Tensor
+        phase : str, optional (default='sin')
+
+        Raises
+        ------
+        TODO: error checking input dimensions
+
+        Returns
+        -------
+        harmonics_matrix : torch.Tensor
+        """
+        num = 2*harmonics.size(0) - (harmonics == 0).sum()
+        zero_indices = harmonics == 0
+        zero_imtx = torch.ones(angles.size(0), zero_indices.sum())
+        non_zero_imtx = angles.repeat(num-zero_indices.sum(), 1)
+
+        columns = [self._harmonic_column(h, angles, phase) for h in harmonics]
+        matrix = torch.cat(columns, axis=1)
+
+        harmonic_matrix = torch.pinverse(matrix)
+        return harmonic_matrix
+
+
+    def forward(
+        self,
+        x: torch.tensor,
+        upsample_output: bool = False
+    ) -> Union[List[torch.Tensor], torch.Tensor]:
+        """
+        Forward pass of the pyramid.
+
+        This function returns a lit of Tensors for the subbands in each stage
+        of the pyramid or, if ``upsample_output`` is ``True``, a Tensor
+        containing every subband at every level that has been upsampled to be
+        the same size as the input Tensor.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input to the pyramid.
+        upsample_output : boolean
+            If ``True`` then the every subband will be upsampled to be the same
+            size as the input and then stacked to be a singular tensor.
+
+        Raises
+        ------
+        TypeError:
+            Input parameter ``x`` is not of dtype torch.float.
+
+        Returns
+        -------
+        pyramid : Union[List[torch.Tensor], Tensor]
+            List of tensors, where each entry contains the subbands at each
+            stage of the pyramid. The low pass residual is the last element
+            in the pyramid. If ``upsample_output`` is ``True`` then this will
+            be one Tensor where each subband has been upsample to be the same
+            dimensions as the input.
+        hi_pass : torch.Tensor
+            Tensor containing the high pass residual.
         """
 
-        """
-        return x
+        if upsample_output:
+            original_size = [high_pass.size(2), high_pass.size(3)]
+            pyr_upsample = [
+                F.interpolate(stage, size=original_size) for stage in pyramid
+            ]
+            pyramid = torch.cat(pyr_upsample, dim=1)
+
+        return pyramid, high_pass
 
 
 class SteerablePyramid(nn.Module):
@@ -232,7 +379,7 @@ class SteerablePyramid(nn.Module):
     Attributes
     ----------
 
-    . [SIMON1995PYR] E P Simoncelli and W T Freeman, "The Steerable Pyramid:
+    .. [SIMON1995PYR] E P Simoncelli and W T Freeman, "The Steerable Pyramid:
        A Flexible Architecture for Multi-Scale Derivative Computation," Second
        Int'l Conf on Image Processing, Washington, DC, Oct 1995.
 
@@ -261,14 +408,16 @@ class SteerablePyramid(nn.Module):
             torch.nn.init.normal_(param)
 
         if pretrained:
-            filters = filt_utils.STEERABLE_SPATIAL_FILTERS
+            filters = pyr_filts.STEERABLE_SPATIAL_FILTERS_1
             with torch.no_grad():
                 self.lo0filt.data = filters['lo0filt']
                 self.hi0filt.data = filters['hi0filt']
                 self.lofilt.data = filters['lofilt']
                 self.bfilts.data = filters['bfilts']
 
-    def _validate_input(self, stages: int, num_orientations: int,
+    def _validate_input(self,
+                        stages: int,
+                        num_orientations: int,
                         pretrained: bool) -> bool:
         """
         Validates input of the steerable pyramid class.
@@ -338,8 +487,6 @@ class SteerablePyramid(nn.Module):
             dimensions as the input.
         hi_pass : torch.Tensor
             Tensor containing the high pass residual.
-
-        TODO: whether to return padded tensor or list of tensors
         """
         if x.dtype != torch.float32:
             raise TypeError('Input x must be of type torch.float32.')
