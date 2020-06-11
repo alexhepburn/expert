@@ -10,6 +10,7 @@ from typing import List, Union
 import math
 
 import numpy as np
+np.set_printoptions(precision=2) # TODO: remove
 
 import torch
 import torch.nn as nn
@@ -19,6 +20,7 @@ import expert.layers.divisive_normalisation as expert_divisive_normalisation
 
 import expert.utils.pyramid_filters as pyr_filts
 import expert.utils.conv as conv_utils
+import expert.utils.fourier as fourier
 
 __all__ = ['SteerableWavelet', 'SteerablePyramid', 'LaplacianPyramid',
            'LaplacianPyramidGDN']
@@ -172,13 +174,18 @@ class LaplacianPyramidGDN(nn.Module):
 
 class SteerableWavelet(nn.Module):
     """
-    Steerable wavelet layer.
+    Steerable wavelet pyramid.
 
     Performs a high-pass and low-pass filtering. The low-pass filtered image
     is then passed through ``wavelets`` wavelet transformations, each
     with a different orientation. This is done at ``scales`` dfferent scales
     where each scale is downsampled by ``downsampled``.
 
+    TODO : pass dimension parameter into __init__ and precompute log_rad
+           and angle.
+
+    Parameters
+    ----------
     stages : int, optional (default=4)
         Number of stages to be used in the pyramid.
     order: int, optional (default=3)
@@ -188,6 +195,22 @@ class SteerableWavelet(nn.Module):
     twidth : int, optional(default=1)
         width of the transition region of the radial lowpass function in
         octaves.
+
+    Raises
+    ------
+
+    Attributes
+    ----------
+    num_orientations : integer
+    harmincs : torch.Tensor
+    angles : torch.Tensor
+    steer_matrix : torch.Tensor
+    Xrcos : torch.Tensor
+    Yrcos : torch.Tensor
+    YIrcos : torch.Tensor
+    Xcosn : torch.Tensor
+    const : float
+    Ycosn : torch.Tensor
     """
     def __init__(self,
                  stages: int = 4,
@@ -208,7 +231,23 @@ class SteerableWavelet(nn.Module):
             self.harmonics = torch.arange(0, order)*2
 
         self.angles = torch.arange(0, order+1) * math.pi / self.num_orientations
-        self.steer_matrix = self.steer_to_harmonics(harmonics, angles, 'sin')
+        self.steer_matrix = fourier.steer_to_harmonics(
+            self.harmonics, self.angles, 'sin')
+
+        # CONSTANTS
+        self.Xrcos, self.Yrcos = fourier.raised_cosine(
+            twidth, -twidth/2, func_min=0.0, func_max=1.0, size=10)
+        self.Yrcos = torch.sqrt(self.Yrcos)
+        self.YIrcos = torch.sqrt(1.0 - self.Yrcos**2)
+        self.Xcosn = math.pi * torch.arange(-2047, 1024+2) / 1024 # (-2*pi:pi]
+        self.const = 2**(2*order) * math.factorial(order)**2 \
+            / (self.num_orientations * math.factorial(order*2))
+        self.Ycosn = math.sqrt(self.const) * torch.cos(self.Xcosn)**order
+
+        # Orientation angles
+        self.band_angles = torch.Tensor(
+            [self.Xcosn[0] + math.pi*i/self.num_orientations
+             for i in range(self.num_orientations)])
 
     def _validate_input(self,
                         stages: int,
@@ -243,69 +282,117 @@ class SteerableWavelet(nn.Module):
         is_valid = True
         return is_valid
 
-    def _harmonic_column(self,
-                         harmonic: torch.Tensor,
-                         angles: torch.Tensor,
-                         phase: str) -> torch.Tensor:
+    def meshgrid_angle(self,
+                       dims: List[int]) -> torch.Tensor:
         """
-        For a singular harmonic, generates the neccesary values to compute
-        steering matrix.
+        Computes meshgrid of input dimensions and angles
 
-        FFor the description of the input parameters and exceptions raised by
-        this function, please see the documentation of the
-        :func:`expert.models.pyramids.SteerableWavelet.steer_to_harmonics`
-        function.
-
-        Returns
-        -------
-        column : torch.Tensor
-            Column to create a steer matrix for harmonic.
-        """
-        if harmonic == 0:
-                column = torch.ones(angles.size(0), 1)
-        else:
-            args = harmonic * angles
-            sin_args = torch.sin(args).unsqueeze(1)
-            cos_args = torch.cos(args).unsqueeze(1)
-            if phase is 'sin':
-                column = torch.cat([sin_args, -cos_args], axis=1)
-            else:
-                column = torch.cat([cos_args, sin_args], axis=1)
-
-        return column
-
-    def steer_to_harmonics(self,
-                           harmonics: torch.Tensor,
-                           angles: torch.Tensor,
-                           phase: str = 'sin') -> torch.Tensor:
-        """
-        Maps a directional basis set onto the angular Fourier harmonics.
+        Takes the dimensions of an image, and computes a meshgrid over these
+        values. Then computes the angles and log radians of this meshgrid.
 
         Parameters
         ----------
-        harmonics : torch.Tensor
-        angles : torch.Tensor
-        phase : str, optional (default='sin')
-
-        Raises
-        ------
-        TODO: error checking input dimensions
+        dims : List[Integer]
+            List of length two sepcificy [h, w] of image.
 
         Returns
         -------
-        harmonics_matrix : torch.Tensor
+        angle : torch.Tensor
+            Angle of meshgrid.
+        log_rad : torch.Tensor
+            Angle in log radians.
         """
-        num = 2*harmonics.size(0) - (harmonics == 0).sum()
-        zero_indices = harmonics == 0
-        zero_imtx = torch.ones(angles.size(0), zero_indices.sum())
-        non_zero_imtx = angles.repeat(num-zero_indices.sum(), 1)
+        ctr = [math.ceil((d+0.5)/2) for d in dims]
+        vectors = [
+            (torch.arange(1, dims[i]+1)-ctr[i]) / (dims[i]/2) for i in range(2)]
+        yramp, xramp = torch.meshgrid(vectors[1], vectors[0])
+        angle = torch.atan2(yramp, xramp)
+        log_rad = torch.sqrt(xramp**2 + yramp**2)
 
-        columns = [self._harmonic_column(h, angles, phase) for h in harmonics]
-        matrix = torch.cat(columns, axis=1)
+        # Replace middle element in matrix
+        log_rad[ctr[0]-1, ctr[1]-1] = log_rad[ctr[0]-1, ctr[1]-2]
+        log_rad = torch.log2(log_rad)
 
-        harmonic_matrix = torch.pinverse(matrix)
-        return harmonic_matrix
+        return angle, log_rad
 
+    def _check_height(self,
+                      size_x : torch.Size) -> bool:
+        """
+        Checks if dimensions of image is compatible with height of pyramid.
+
+        Calculates the max height a pyramid with the given `size_x` and
+        compares this with the height intialised with this pyramid.
+
+        Parameters
+        ----------
+        size_x : torch.Size
+            Size of input x. First dimension is batch dimension.
+
+        Raises
+        ------
+        ValueError:
+            If the maximum height of pyramid for `size_x` is larger than the
+            height of `self.stages`
+
+        Returns
+        -------
+        is_valid : boolean
+            ``True`` the `size_x` dimensions are compatible with `self.stages`,
+            else ``False``.
+        """
+        is_valid = False
+        dims = list(size_x)[1:]
+        max_height = math.floor(math.log2(min(dims))) - 2
+        if self.stages > max_height:
+            raise ValueError('Input maximum number of stages is %d but number '
+                             'of pyramid stages is %d. Please use larger input '
+                             'images or initialise pyramid with different '
+                             'number of stages.'%(max_height, self.stages))
+
+        is_valid = True
+        return is_valid
+
+    def _complex_number_product(self,
+                                x : torch.Tensor) -> torch.Tensor:
+        """
+        Multiple tensor with imaginary number.
+
+        If `o` is the order within the pyramid, then output `y` is given by
+        .. math::
+            \mathbf{y} = ((-\sqrt{-1})^o) * \mathbf{x}.
+
+        The value of (-sqrt(-1))^order cycles through values. List below are
+        the possible cases.
+        If order % 4 == 0, (-sqrt(-1))^order = 1
+        If order % 4 == 1, (-sqrt(-1))^order = -j
+        If order % 4 == 2, (-sqrt(-1))^order = -1
+        If order % 4 == 3, (-sqrt(-1))^order = j
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor.
+
+        Returns
+        -------
+        y: torch.Tensor
+            Output tensor.
+        """
+        value = (self.num_orientations-1 % 4)
+        if value == 0: # x * 1
+            return x
+        else:
+            real, imag = torch.unbind(x, -1)
+            if value == 1: # x * -j
+                real_new = imag
+                imag_new = -real
+            elif value == 2: # x * -1
+                real_new = -real
+                imag_new = -imag
+            elif value == 3: # x * j
+                real_new = -imag
+                imag_new  = real
+            return torch.stack((real_new, imag_new), -1)
 
     def forward(
         self,
@@ -344,6 +431,91 @@ class SteerableWavelet(nn.Module):
         hi_pass : torch.Tensor
             Tensor containing the high pass residual.
         """
+        assert self._check_height(x.size())
+
+        dims = [x.size(1), x.size(2)]
+        self.angle, self.log_rad = self.meshgrid_angle(dims=dims)
+
+        low_mask = fourier.point_operation_filter(
+            self.log_rad, self.YIrcos, origin=self.Xrcos[0],
+            increment=self.Xrcos[1]-self.Xrcos[0]).to(x.device)
+        self.low_mask = low_mask.view(1, low_mask.size(0), low_mask.size(1), 1)
+
+        high_mask = fourier.point_operation_filter(
+            self.log_rad, self.Yrcos, origin=self.Xrcos[0],
+            increment=self.Xrcos[1]-self.Xrcos[0]).to(x.device)
+        self.high_mask = high_mask.view(
+            1, high_mask.size(0), high_mask.size(1), 1)
+
+        # Shape [batch, height, width, 2] where last dimension is real and
+        # imaginary part of Fourier transform.
+        discrete_fourier_image = fourier.fftshift(
+            torch.rfft(x, signal_ndim=2, onesided=False))
+
+        # Calculate highpass and lowpass of the image.
+        low_pass = discrete_fourier_image * self.low_mask
+        high_pass = discrete_fourier_image * self.high_mask
+
+        pyramid = []
+        # Intiailised parameters that are going to change each stage
+        Xrcos = self.Xrcos
+        log_rad = self.log_rad
+        angle = self.angle
+
+        # Stages in pyramid
+        for h in range(0, self.stages):
+            Xrcos = Xrcos - math.log2(2)
+            himask = fourier.point_operation_filter(
+                log_rad, self.Yrcos, origin=Xrcos[0],
+                increment=Xrcos[1]-Xrcos[0])
+            himask = himask.view(1, himask.size(0), himask.size(1), 1)
+
+            # Orientation band masks
+            angle_masks = torch.stack(
+            [fourier.point_operation_filter(self.angle, self.Ycosn,
+                origin=angle, increment=self.Xcosn[1]-self.Xcosn[0])
+            for angle in self.band_angles])
+            fourier_band = (low_pass.permute(3, 0, 1, 2) * angle_masks).unsqueeze(0).permute(0, 2, 3, 4, 1)
+            # TODO: computation only works for batch_size=1
+            fourier_band = fourier_band * himask
+            fourier_band = self._complex_number_product(fourier_band)
+            # Collapse from [batch, bands, height, width, 2] to
+            # [batch*bands, height, width, 2] for ifft.
+            bands = torch.irfft(fourier.ifftshift(
+                fourier_band.view(-1, fourier_band.size(2),
+                fourier_band.size(3), 2)), signal_ndim=2, onesided=False)
+            # Expand back out to [batch, bands, height, width] after doing
+            # inverse fast fourier transform.
+            bands = bands.view(x.size(0), self.num_orientations, bands.size(1),
+                               bands.size(2))
+            pyramid.append(bands)
+
+            # Subsampling operations
+            dims = [low_pass.size(1), low_pass.size(2)]
+            ctr = [math.ceil((d+0.5)/2) for d in dims]
+            lodims = [math.ceil((d-0.5)/2) for d in dims]
+            loctr = [math.ceil((d+0.5)/2) for d in lodims]
+
+            lostart = [c-l for c,l in zip(ctr, loctr)]
+            loend = [ls+lo for ls, lo in zip(lostart, lodims)]
+
+            log_rad = log_rad[lostart[0]:loend[0], lostart[1]:loend[1]]
+            angle = angle[lostart[0]:loend[0], lostart[1]:loend[1]]
+            low_pass = low_pass[:, lostart[0]:loend[0], lostart[1]:loend[1]]
+
+            # Low pass to use in the next stage
+            low_mask = fourier.point_operation_filter(
+            log_rad, self.YIrcos, origin=Xrcos[0],
+            increment=Xrcos[1]-Xrcos[0]).to(x.device)
+            low_mask = low_mask.view(1, low_mask.size(0), low_mask.size(1), 1)
+            low_pass = low_pass * low_mask
+
+        low_pass_residual = torch.irfft(fourier.ifftshift(
+                low_pass), signal_ndim=2, onesided=False)
+        pyramid.append(low_pass_residual)
+
+        high_pass_residual = torch.irfft(fourier.ifftshift(
+                high_pass), signal_ndim=2, onesided=False)
 
         if upsample_output:
             original_size = [high_pass.size(2), high_pass.size(3)]
@@ -352,7 +524,7 @@ class SteerableWavelet(nn.Module):
             ]
             pyramid = torch.cat(pyr_upsample, dim=1)
 
-        return pyramid, high_pass
+        return pyramid, high_pass_residual
 
 
 class SteerablePyramid(nn.Module):

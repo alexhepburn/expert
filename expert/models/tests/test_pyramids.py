@@ -8,8 +8,6 @@ import pytest
 
 import math
 
-import numpy as np
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -28,6 +26,7 @@ class TestSteerableWavelet():
     """
     expert.setup_random_seed()
     sw = emp.SteerableWavelet()
+    sw_small = emp.SteerableWavelet(stages=1, order=2, twidth=1)
 
     def test_init(self):
         """
@@ -45,6 +44,39 @@ class TestSteerableWavelet():
         assert torch.allclose(self.sw.harmonics, harmonics)
         assert torch.allclose(self.sw.angles, angles)
 
+    def test_meshgrid_angle(self):
+        """
+        Tests :func:`expert.models.pyramids.SteerableWavelet.meshgrid_angle`
+        function.
+        """
+
+        # All good
+        # Dims 2x2
+        dims = [2, 2]
+        angle, log_rad = self.sw.meshgrid_angle(dims=dims)
+        correct_angle = torch.Tensor([[-2.3562, -1.5708], [3.1416, 0.0]])
+        correct_log_rad = torch.Tensor([[0.5, 0.0], [0.0, 0.0]])
+        assert torch.allclose(angle, correct_angle, atol=1e-4)
+        assert torch.allclose(log_rad, correct_log_rad, atol=1e-4)
+
+        # Dims 5x5
+        dims = [5, 5]
+        angle, log_rad = self.sw.meshgrid_angle(dims=dims)
+        correct_angle = torch.Tensor([
+            [-2.3562, -2.0344, -1.5708, -1.1071, -0.7854],
+            [-2.6779, -2.3562, -1.5708, -0.7854, -0.4636],
+            [3.1416, 3.1416, 0.0, 0.0, 0.0],
+            [2.6779, 2.3562, 1.5708, 0.7854, 0.4636],
+            [2.3562, 2.0344, 1.5708, 1.1071, 0.7854]])
+        correct_log_rad = torch.Tensor([
+            [0.1781, -0.1610, -0.3219, -0.1610, 0.1781],
+            [-0.1610, -0.8219, -1.3219, -0.8219, -0.1610],
+            [-0.3219, -1.3219, -1.3219, -1.3219, -0.3219],
+            [-0.1610, -0.8219, -1.3219, -0.8219, -0.1610],
+            [0.1781, -0.1610, -0.3219, -0.1610, 0.1781]])
+        assert torch.allclose(angle, correct_angle, atol=1e-4)
+        assert torch.allclose(log_rad, correct_log_rad, atol=1e-4)
+
     def test_validate_input(self):
         """
         Tests :func:`expert.models.pyramids.SteerableWavelet._validate_input`
@@ -52,33 +84,38 @@ class TestSteerableWavelet():
         """
         return True
 
-    def test_steer_to_harmonics(self):
+    def test_check_height(self):
         """
-        Tests :func:`expert.models.pyramids.SteerableWavelet.steer_to_harmonics`
+        Tests :func:`expert.models.pyramids.SteerableWavelet._check_height`
         function.
         """
+        dims_msg = ('Input maximum number of stages is %d but number of '
+                    'pyramid stages is %d. Please use larger input images or '
+                    'initialise pyramid with different number of stages.')
 
-        # All good
-        # Test with zero
-        harmonics = torch.Tensor([0., 1., 2.])
-        angles = torch.arange(0, 3+1) * math.pi / 4
-        steer = self.sw.steer_to_harmonics(harmonics, angles, phase='sin')
-        correct = torch.Tensor([[0.2384, 0.1260, 0.1260, 0.2384],
-                                [-0.3371, 0.5289, -0.1782, 0.3700],
-                                [-0.8604, 0.7809, -0.9262, 0.8467],
-                                [-0.6084, 1.0522, -0.6549, 0.0987],
-                                [0.0987, -0.6549, 1.0522, -0.6084]])
-        assert torch.allclose(correct, steer, atol=1e-4)
+        # Check stages=1
+        dims=torch.Size((1, 7, 7))
+        with pytest.raises(ValueError) as exin:
+            self.sw_small._check_height(dims)
+        assert str(exin.value) == dims_msg%(0, 1)
 
-        harmonics = torch.Tensor([1., 2., 3.])
-        steer = self.sw.steer_to_harmonics(harmonics, angles, phase='cos')
-        correct = torch.Tensor([[0.3750, 0.1768, 0.1250, -0.1768],
-                                [0.1250, 0.3536, 0.3750, 0.3536],
-                                [0.2500, 0.0000, -0.2500, 0.0000],
-                                [0.000, 0.2500, 0.0000, -0.2500],
-                                [0.3750, -0.1768, 0.1250, 0.1768],
-                                [-0.1250, 0.3535, -0.3750, 0.3536]])
-        assert torch.allclose(correct, steer, atol=1e-4)
+        dims = torch.Size((1, 8, 8))
+        assert self.sw_small._check_height(dims)
+
+        dims = torch.Size((1, 64, 64))
+        assert self.sw_small._check_height(dims)
+
+        # Check stages=4
+        dims = torch.Size((1, 63, 63))
+        with pytest.raises(ValueError) as exin:
+            self.sw._check_height(dims)
+        assert str(exin.value) == dims_msg%(3, 4)
+
+        dims = torch.Size((1, 64, 64))
+        assert self.sw._check_height(dims)
+
+        dims = torch.Size((1, 128, 128))
+        assert self.sw._check_height(dims)
 
     def test_forward(self):
         """
@@ -86,6 +123,22 @@ class TestSteerableWavelet():
         """
         expert.setup_random_seed()
 
+        # Check Tensors of 1
+        x = torch.ones(1, 8, 8)
+        pyr, high_pass = self.sw_small.forward(x)
+        # Correct Tensors
+        low_pass_residual = torch.ones(1, 4, 4) * 4.0
+        true_high_pass = 1.61e-16 * torch.ones(1, 8, 8)
+        band_1 = -1.57e-16 * torch.ones(1, 8, 8)
+        band_2 = -1.14e-16 * torch.ones(1, 8, 8)
+        band_3 = -1.14e-16 * torch.ones(1, 8, 8)
+        bands = torch.stack([band_1, band_2, band_3])
+        assert torch.allclose(true_high_pass, high_pass, atol=1e-4)
+        assert torch.allclose(bands, pyr[0], atol=1e-4)
+        assert torch.allclose(low_pass_residual, pyr[-1], atol=1e-4)
+
+        # Check diagonal matrix
+        # TODO: check diagonal matrix
 
 class TestSteerablePyramid():
     """
