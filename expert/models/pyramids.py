@@ -450,7 +450,7 @@ class SteerableWavelet(nn.Module):
         # Shape [batch, height, width, 2] where last dimension is real and
         # imaginary part of Fourier transform.
         discrete_fourier_image = fourier.fftshift(
-            torch.rfft(x, signal_ndim=2, onesided=False))
+            torch.rfft(x, signal_ndim=2, onesided=False), dim=(-3, -2))
 
         # Calculate highpass and lowpass of the image.
         low_pass = discrete_fourier_image * self.low_mask
@@ -472,9 +472,9 @@ class SteerableWavelet(nn.Module):
 
             # Orientation band masks
             angle_masks = torch.stack(
-            [fourier.point_operation_filter(self.angle, self.Ycosn,
-                origin=angle, increment=self.Xcosn[1]-self.Xcosn[0])
-            for angle in self.band_angles])
+            [fourier.point_operation_filter(angle, self.Ycosn,
+                origin=a, increment=self.Xcosn[1]-self.Xcosn[0])
+            for a in self.band_angles])
             fourier_band = (low_pass.permute(3, 0, 1, 2) * angle_masks).unsqueeze(0).permute(0, 2, 3, 4, 1)
             # TODO: computation only works for batch_size=1
             fourier_band = fourier_band * himask
@@ -483,7 +483,8 @@ class SteerableWavelet(nn.Module):
             # [batch*bands, height, width, 2] for ifft.
             bands = torch.irfft(fourier.ifftshift(
                 fourier_band.view(-1, fourier_band.size(2),
-                fourier_band.size(3), 2)), signal_ndim=2, onesided=False)
+                fourier_band.size(3), 2), dim=(-3, -2)), signal_ndim=2,
+                onesided=False)
             # Expand back out to [batch, bands, height, width] after doing
             # inverse fast fourier transform.
             bands = bands.view(x.size(0), self.num_orientations, bands.size(1),
@@ -511,11 +512,11 @@ class SteerableWavelet(nn.Module):
             low_pass = low_pass * low_mask
 
         low_pass_residual = torch.irfft(fourier.ifftshift(
-                low_pass), signal_ndim=2, onesided=False)
+                low_pass, dim=(-3, -2)), signal_ndim=2, onesided=False)
         pyramid.append(low_pass_residual)
 
         high_pass_residual = torch.irfft(fourier.ifftshift(
-                high_pass), signal_ndim=2, onesided=False)
+                high_pass, dim=(-3, -2)), signal_ndim=2, onesided=False)
 
         if upsample_output:
             original_size = [high_pass.size(2), high_pass.size(3)]

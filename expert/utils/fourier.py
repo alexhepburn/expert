@@ -137,31 +137,47 @@ def point_operation_filter(image : torch.Tensor,
     mask = interpolated_values.reshape(image.size())
     return mask
 
-def roll_n(X, axis, n):
+def roll(x, shift, dim):
     """
+    Similar to np.roll but applies to PyTorch Tensors
+    https://github.com/khammernik/sigmanet
     """
-    f_idx = tuple(slice(None, None, None) if i != axis
-                  else slice(0, n, None) for i in range(X.dim()))
-    b_idx = tuple(slice(None, None, None) if i != axis else
-                  slice(n, None, None) for i in range(X.dim()))
-    front = X[f_idx]
-    back = X[b_idx]
-    return torch.cat([back, front], axis)
+    if isinstance(shift, (tuple, list)):
+        assert len(shift) == len(dim)
+        for s, d in zip(shift, dim):
+            x = roll(x, s, d)
+        return x
+    shift = shift % x.size(dim)
+    if shift == 0:
+        return x
+    left = x.narrow(dim, 0, x.size(dim) - shift)
+    right = x.narrow(dim, x.size(dim) - shift, shift)
+    return torch.cat((right, left), dim=dim)
 
-def fftshift(x):
-    """
-    """
-    real, imag = torch.unbind(x, -1)
-    for dim in range(1, len(real.size())):
-        real = roll_n(real, axis=dim, n=real.size(dim)//2)
-        imag = roll_n(imag, axis=dim, n=imag.size(dim)//2)
-    return torch.stack((real, imag), -1)
 
-def ifftshift(x):
+def fftshift(x, dim=None):
     """
+    Similar to np.fft.fftshift but applies to PyTorch Tensors
     """
-    real, imag = torch.unbind(x, -1)
-    for dim in range(len(real.size()) - 1, 0, -1):
-        real = roll_n(real, axis=dim, n=real.size(dim)//2)
-        imag = roll_n(imag, axis=dim, n=imag.size(dim)//2)
-    return torch.stack((real, imag), -1)
+    if dim is None:
+        dim = tuple(range(x.dim()))
+        shift = [dim // 2 for dim in x.shape]
+    elif isinstance(dim, int):
+        shift = x.shape[dim] // 2
+    else:
+        shift = [x.shape[i] // 2 for i in dim]
+    return roll(x, shift, dim)
+
+
+def ifftshift(x, dim=None):
+    """
+    Similar to np.fft.ifftshift but applies to PyTorch Tensors
+    """
+    if dim is None:
+        dim = tuple(range(x.dim()))
+        shift = [(dim + 1) // 2 for dim in x.shape]
+    elif isinstance(dim, int):
+        shift = (x.shape[dim] + 1) // 2
+    else:
+        shift = [(x.shape[i] + 1) // 2 for i in dim]
+    return roll(x, shift, dim)

@@ -25,7 +25,7 @@ class TestSteerableWavelet():
     Tests :class:`expert.models.pyramids.SteerableWavelet` class.
     """
     expert.setup_random_seed()
-    sw = emp.SteerableWavelet()
+    sw = emp.SteerableWavelet(stages=2, order=3, twidth=1)
     sw_small = emp.SteerableWavelet(stages=1, order=2, twidth=1)
 
     def test_init(self):
@@ -35,7 +35,7 @@ class TestSteerableWavelet():
         assert (issubclass(emp.SteerableWavelet, nn.Module))
         assert (self.sw.__class__.__bases__[0].__name__ == 'Module')
 
-        assert self.sw.stages == 4
+        assert self.sw.stages == 2
         assert self.sw.num_orientations == 4
         assert self.sw.twidth == 1
 
@@ -94,10 +94,10 @@ class TestSteerableWavelet():
                     'initialise pyramid with different number of stages.')
 
         # Check stages=1
-        dims=torch.Size((1, 7, 7))
+        dims = torch.Size((1, 7, 7))
         with pytest.raises(ValueError) as exin:
             self.sw_small._check_height(dims)
-        assert str(exin.value) == dims_msg%(0, 1)
+        assert str(exin.value) == dims_msg % (0, 1)
 
         dims = torch.Size((1, 8, 8))
         assert self.sw_small._check_height(dims)
@@ -106,12 +106,12 @@ class TestSteerableWavelet():
         assert self.sw_small._check_height(dims)
 
         # Check stages=4
-        dims = torch.Size((1, 63, 63))
+        dims = torch.Size((1, 15, 15))
         with pytest.raises(ValueError) as exin:
             self.sw._check_height(dims)
-        assert str(exin.value) == dims_msg%(3, 4)
+        assert str(exin.value) == dims_msg % (1, 2)
 
-        dims = torch.Size((1, 64, 64))
+        dims = torch.Size((1, 16, 16))
         assert self.sw._check_height(dims)
 
         dims = torch.Size((1, 128, 128))
@@ -137,8 +137,128 @@ class TestSteerableWavelet():
         assert torch.allclose(bands, pyr[0], atol=1e-4)
         assert torch.allclose(low_pass_residual, pyr[-1], atol=1e-4)
 
-        # Check diagonal matrix
-        # TODO: check diagonal matrix
+        # Matrix of 0's with 1's in the diagonal elements
+        x = torch.zeros(8, 8)
+        x = x.fill_diagonal_(1.0).unsqueeze(0)
+        pyr, high_pass = self.sw_small.forward(x)
+        # Correct Tensors
+        low_pass_residual = torch.Tensor([[1.207, 0.500, -0.207, 0.500],
+                                          [0.500, 1.207, 0.500, -0.207],
+                                          [-0.207, 0.500, 1.207, 0.500],
+                                          [0.500, -0.207, 0.500, 1.207]])
+        true_high_pass = torch.Tensor([
+            [0.552, -0.302, -0.052, 0.052, 0.052, 0.052, -0.052, -0.302],
+            [-0.302, 0.552, -0.302, -0.052, 0.052, 0.052, 0.052, -0.052],
+            [-0.052, -0.302, 0.552, -0.302, -0.052, 0.052, 0.052, 0.052],
+            [0.052, -0.052, -0.302, 0.552, -0.302, -0.052, 0.052, 0.052],
+            [0.052, 0.052, -0.052, -0.302, 0.552, -0.302, -0.052, 0.052],
+            [0.052, 0.052, 0.052, -0.052, -0.302, 0.552, -0.302, -0.052],
+            [-0.052, 0.052, 0.052, 0.052, -0.052, -0.302, 0.552, -0.302],
+            [-0.302, -0.052, 0.052, 0.052, 0.052, -0.052, -0.302, 0.552]])
+        band_1 = torch.Tensor([
+            [-0.167, -0.059, 0.083, 0.059, 0.000, 0.059, 0.083, -0.059],
+            [-0.059, -0.167, -0.059, 0.083, 0.059, 0.000, 0.059, 0.083],
+            [0.083, -0.059, -0.167, -0.059, 0.083, 0.059, 0.000, 0.059],
+            [0.059, 0.083, -0.059, -0.167, -0.059, 0.083, 0.059, 0.000],
+            [0.000, 0.059, 0.083, -0.059, -0.167, -0.059, 0.083, 0.059],
+            [0.059, 0.000, 0.059, 0.083, -0.059, -0.167, -0.059, 0.083],
+            [0.083, 0.059, 0.000, 0.059, 0.083, -0.059, -0.167, -0.059],
+            [-0.059, 0.083, 0.059, 0.000, 0.059, 0.083, -0.059, -0.167]])
+        band_2 = torch.Tensor([
+            [-0.022, -0.008, 0.011, 0.008, 0.000, 0.008, 0.011, -0.008],
+            [-0.008, -0.022, -0.008, 0.011, 0.008, 0.000, 0.008, 0.011],
+            [0.011, -0.008, -0.022, -0.008, 0.011, 0.008, 0.000, 0.008],
+            [0.008, 0.011, -0.008, -0.022, -0.008, 0.011, 0.008, 0.000],
+            [0.000, 0.008, 0.011, -0.008, -0.022, -0.008, 0.011, 0.008],
+            [0.008, 0.000, 0.008, 0.011, -0.008, -0.022, -0.008, 0.011],
+            [0.011, 0.008, 0.000, 0.008, 0.011, -0.008, -0.022, -0.008],
+            [-0.008, 0.011, 0.008, 0.000, 0.008, 0.011, -0.008, -0.022]])
+        band_3 = torch.Tensor([
+            [-0.311, -0.110, 0.156, 0.110, 0.000, 0.110, 0.156, -0.110],
+            [-0.110, -0.311, -0.110, 0.156, 0.110, 0.000, 0.110, 0.156],
+            [0.156, -0.110, -0.311, -0.110, 0.156, 0.110, 0.000, 0.110],
+            [0.110, 0.156, -0.110, -0.311, -0.110, 0.156, 0.110, 0.000],
+            [0.000, 0.110, 0.156, -0.110, -0.311, -0.110, 0.156, 0.110],
+            [0.110, 0.000, 0.110, 0.156, -0.110, -0.311, -0.110, 0.156],
+            [0.156, 0.110, 0.000, 0.110, 0.156, -0.110, -0.311, -0.110],
+            [-0.110, 0.156, 0.110, 0.000, 0.110, 0.156, -0.110, -0.311]])
+        bands = torch.stack([band_1, band_2, band_3])
+        assert torch.allclose(true_high_pass, high_pass, atol=1e-3)
+        assert torch.allclose(bands, pyr[0], atol=1e-3)
+        assert torch.allclose(low_pass_residual, pyr[-1], atol=1e-3)
+        assert torch.allclose(true_high_pass, high_pass, atol=1e-3)
+
+        # Test pyramid of height more than 1
+        x = torch.zeros(16, 16)
+        x = x.fill_diagonal_(1.0).unsqueeze(0)
+        pyr, high_pass = self.sw.forward(x)
+        # Correct Tensors
+        low_pass_residual = torch.Tensor([[2.4142, 1., -0.4142, 1.],
+                                          [1., 2.4142, 1., -0.4142],
+                                          [-0.4142, 1., 2.4142, 1.],
+                                          [1., -0.4142, 1.,  2.4142]])
+        # we'll check the first row and first column and size since the
+        # matrices are quite big.
+        true_high_pass_row_column = torch.Tensor(
+            [0.5377, -0.3060, -0.0342,  0.0737,  0.0259, -0.0219, -0.0176,
+             0.0042,  0.0141,  0.0042, -0.0176, -0.0219,  0.0259,  0.0737,
+             -0.0342, -0.3060])
+        band_1_1_row = torch.Tensor(
+            [0., -0.094, -0.0479, 0.0274, 0.0283, 0.011, 0.008, 0.0014,  0.,
+             -0.0014, -0.008, -0.011, -0.0283, -0.0274, 0.0479, 0.094])
+        band_1_1_column = torch.Tensor(
+            [0., 0.094, 0.0479, -0.0274, -0.0283, -0.011, -0.008, -0.0014, 0.,
+             0.0014, 0.008, 0.011, 0.0283, 0.0274, -0.0479, -0.094])
+        band_1_2_column = torch.Tensor(
+            [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
+        band_1_2_row = torch.Tensor(
+            [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
+        band_1_3_column = torch.Tensor(
+            [0., -0.094, -0.0479, 0.0274, 0.0283, 0.011, 0.008, 0.0014, 0.,
+             -0.0014, -0.008, -0.011, -0.0283, -0.0274, 0.0479, 0.094])
+        band_1_3_row = torch.Tensor(
+            [0., 0.094, 0.0479, -0.0274, -0.0283, -0.011, -0.008, -0.0014, 0.,
+             0.0014, 0.008, 0.011, 0.0283, 0.0274, -0.0479, -0.094])
+        band_1_4_column = torch.Tensor(
+            [0., -0.2658, -0.1356, 0.0774, 0.0799, 0.0311, 0.0225, 0.0041,
+             0., -0.0041, -0.0225, -0.0311, -0.0799, -0.0774, 0.1356, 0.2658])
+        band_1_4_row = torch.Tensor(
+            [0., 0.2658, 0.1356, -0.0774, -0.0799, -0.0311, -0.0225, -0.0041,
+             0., 0.0041, 0.0225, 0.0311, 0.0799, 0.0774, -0.1356, -0.2658])
+        bands_1 = [(band_1_1_row, band_1_1_column),
+                   (band_1_2_row, band_1_2_column),
+                   (band_1_3_row, band_1_3_column),
+                   (band_1_4_row, band_1_4_column)]
+        band_2_1_column = torch.Tensor(
+            [0., 0.1909, 0.1118, -0.0327, 0., 0.0327, -0.1118, -0.1909])
+        band_2_1_row = torch.Tensor(
+            [0., -0.1909, -0.1118, 0.0327, 0., -0.0327, 0.1118, 0.1909])
+        band_2_2_column = torch.Tensor([0., 0., 0., 0., 0., 0., 0., 0.])
+        band_2_2_row = torch.Tensor([0., 0., 0., 0., 0., 0., 0., 0.])
+        band_2_3_column = torch.Tensor(
+            [0., -0.1909, -0.1118, 0.0327, 0., -0.0327, 0.1118, 0.1909])
+        band_2_3_row = torch.Tensor(
+            [0., 0.1909, 0.1118, -0.0327, 0., 0.0327, -0.1118, -0.1909])
+        band_2_4_column = torch.Tensor(
+            [0., -0.5398, -0.3162, 0.0926, 0., -0.0926, 0.3162, 0.5398])
+        band_2_4_row = torch.Tensor(
+            [0., 0.5398, 0.3162, -0.0926, 0., 0.0926, -0.3162, -0.5398])
+        bands_2 = [(band_2_1_row, band_2_1_column),
+                   (band_2_2_row, band_2_2_column),
+                   (band_2_3_row, band_2_3_column),
+                   (band_2_4_row, band_2_4_column)]
+
+        import numpy as np
+        assert torch.allclose(low_pass_residual, pyr[-1], atol=1e-4)
+        for i in range(4):
+            row, col = bands_1[i]
+            assert torch.allclose(row, pyr[0][:, i, 0, :], atol=1e-3)
+            assert torch.allclose(col, pyr[0][:, i, :, 0], atol=1e-3)
+
+            row, col = bands_2[i]
+            assert torch.allclose(row, pyr[1][:, i, 0, :], atol=1e-3)
+            assert torch.allclose(col, pyr[1][:, i, :, 0], atol=1e-3)
+
 
 class TestSteerablePyramid():
     """

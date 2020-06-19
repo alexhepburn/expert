@@ -105,11 +105,16 @@ def test_fftshift():
     Tests :func:`expert.utils.fourier.fftshift` function.
     TODO: testing
     """
-    return True
+    m = torch.stack([torch.eye(4), torch.eye(4)], axis=-1)
+    m_rot = fourier.fftshift(m, dim=(-3, -2))
+    assert torch.allclose(m, m_rot)
+
 
 def test_ifftshift():
     """
     Tests :func:`expert.utils.fourier.ifftshift` function.
     TODO: testing
     """
-    return True
+    m = torch.stack([torch.eye(4), torch.eye(4)], axis=-1)
+    m_rot = fourier.ifftshift(m, dim=(-3, -2))
+    assert torch.allclose(m, m_rot)
