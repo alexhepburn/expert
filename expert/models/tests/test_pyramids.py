@@ -283,11 +283,15 @@ class TestSteerablePyramid():
         assert self.sw.bfilts.size() == torch.Size([10, 1, 9, 9])
 
         # Test pretrained
-        filters = filt_utils.STEERABLE_SPATIAL_FILTERS_0
-        assert torch.equal(self.sw_pretrained.lo0filt.data, filters['lo0filt'])
-        assert torch.equal(self.sw_pretrained.hi0filt.data, filters['hi0filt'])
-        assert torch.equal(self.sw_pretrained.lofilt.data, filters['lofilt'])
-        assert torch.equal(self.sw_pretrained.bfilts.data, filters['bfilts'])
+        filters = filt_utils.STEERABLE_SPATIAL_FILTERS_1
+        assert torch.allclose(
+            self.sw_pretrained.lo0filt.data, filters['lo0filt'])
+        assert torch.allclose(
+            self.sw_pretrained.hi0filt.data, filters['hi0filt'])
+        assert torch.allclose(
+            self.sw_pretrained.lofilt.data, filters['lofilt'])
+        assert torch.allclose(
+            self.sw_pretrained.bfilts.data, filters['bfilts'])
 
     def test_validate_input(self):
         """
