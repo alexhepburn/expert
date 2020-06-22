@@ -5,22 +5,20 @@ layers for wavelet transformations.
 # Author: Alex Hepburn <alex.hepburn@bristol.ac.uk>
 # License: new BSD
 
+import expert.utils.fourier as fourier
+import expert.utils.conv as conv_utils
+import expert.utils.pyramid_filters as pyr_filts
+import expert.layers.divisive_normalisation as expert_divisive_normalisation
+import torch.nn.functional as F
+import torch.nn as nn
+import torch
 from typing import List, Union
 
 import math
 
 import numpy as np
-np.set_printoptions(precision=2) # TODO: remove
+np.set_printoptions(precision=2)  # TODO: remove
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-import expert.layers.divisive_normalisation as expert_divisive_normalisation
-
-import expert.utils.pyramid_filters as pyr_filts
-import expert.utils.conv as conv_utils
-import expert.utils.fourier as fourier
 
 __all__ = ['SteerableWavelet', 'SteerablePyramid', 'LaplacianPyramid',
            'LaplacianPyramidGDN']
@@ -30,7 +28,7 @@ LAPLACIAN_FILTER = np.array([[0.0025, 0.0125, 0.0200, 0.0125, 0.0025],
                              [0.0200, 0.1000, 0.1600, 0.1000, 0.0200],
                              [0.0125, 0.0625, 0.1000, 0.0625, 0.0125],
                              [0.0025, 0.0125, 0.0200, 0.0125, 0.0025]],
-                             dtype=np.float32)
+                            dtype=np.float32)
 
 
 class LaplacianPyramid(nn.Module):
@@ -49,38 +47,38 @@ class LaplacianPyramid(nn.Module):
         sigmas = [0.0248, 0.0185, 0.0179, 0.0191, 0.0220, 0.2782]
         dn_filts = []
         dn_filts.append(torch.Tensor(np.reshape([[0, 0.1011, 0],
-                                    [0.1493, 0, 0.1460],
-                                    [0, 0.1015, 0.]]*self.dims,
-                                   (self.dims,  1, 3, 3)).astype(np.float32)))
+                                                 [0.1493, 0, 0.1460],
+                                                 [0, 0.1015, 0.]]*self.dims,
+                                                (self.dims,  1, 3, 3)).astype(np.float32)))
 
         dn_filts.append(torch.Tensor(np.reshape([[0, 0.0757, 0],
-                                    [0.1986, 0, 0.1846],
-                                    [0, 0.0837, 0]]*self.dims,
-                                   (self.dims, 1, 3, 3)).astype(np.float32)))
+                                                 [0.1986, 0, 0.1846],
+                                                 [0, 0.0837, 0]]*self.dims,
+                                                (self.dims, 1, 3, 3)).astype(np.float32)))
 
         dn_filts.append(torch.Tensor(np.reshape([[0, 0.0477, 0],
-                                    [0.2138, 0, 0.2243],
-                                    [0, 0.0467, 0]]*self.dims,
-                                   (self.dims, 1, 3, 3)).astype(np.float32)))
+                                                 [0.2138, 0, 0.2243],
+                                                 [0, 0.0467, 0]]*self.dims,
+                                                (self.dims, 1, 3, 3)).astype(np.float32)))
 
         dn_filts.append(torch.Tensor(np.reshape([[0, 0, 0],
-                                    [0.2503, 0, 0.2616],
-                                    [0, 0, 0]]*self.dims,
-                                   (self.dims, 1, 3, 3)).astype(np.float32)))
+                                                 [0.2503, 0, 0.2616],
+                                                 [0, 0, 0]]*self.dims,
+                                                (self.dims, 1, 3, 3)).astype(np.float32)))
 
         dn_filts.append(torch.Tensor(np.reshape([[0, 0, 0],
-                                    [0.2598, 0, 0.2552],
-                                    [0, 0, 0]]*self.dims,
-                                   (self.dims, 1, 3, 3)).astype(np.float32)))
+                                                 [0.2598, 0, 0.2552],
+                                                 [0, 0, 0]]*self.dims,
+                                                (self.dims, 1, 3, 3)).astype(np.float32)))
 
         dn_filts.append(torch.Tensor(np.reshape([[0, 0, 0],
-                                    [0.2215, 0, 0.0717],
-                                    [0, 0, 0]]*self.dims,
-                                   (self.dims, 1, 3, 3)).astype(np.float32)))
+                                                 [0.2215, 0, 0.0717],
+                                                 [0, 0, 0]]*self.dims,
+                                                (self.dims, 1, 3, 3)).astype(np.float32)))
         dn_filts = nn.ParameterList([nn.Parameter(x, requires_grad=self.trainable)
                                      for x in dn_filts])
         sigmas = nn.ParameterList([nn.Parameter(torch.Tensor(np.array(x)),
-                                  requires_grad=self.trainable) for x in sigmas])
+                                                requires_grad=self.trainable) for x in sigmas])
         return dn_filts, sigmas
 
     def pyramid(self, im):
@@ -89,7 +87,7 @@ class LaplacianPyramid(nn.Module):
         pyr = []
         for i in range(0, self.k):
             J_padding_amount = conv_utils.pad([J.size(2), J.size(3)],
-                                            self.filt.size(3), stride=2)
+                                              self.filt.size(3), stride=2)
             I = F.conv2d(F.pad(J, J_padding_amount, mode='reflect'), self.filt,
                          stride=2, padding=0, groups=self.dims)
             I_up = F.interpolate(I, size=[J.size(2), J.size(3)],
@@ -154,7 +152,8 @@ class LaplacianPyramidGDN(nn.Module):
             I_up_conv = F.conv2d(self.pad_two(I_up), self.filt, stride=1,
                                  padding=0, groups=self.dims)
             if J.size() != I_up_conv.size():
-                I_up_conv = torch.nn.functional.interpolate(I_up_conv, [J.size(2), J.size(3)])
+                I_up_conv = torch.nn.functional.interpolate(
+                    I_up_conv, [J.size(2), J.size(3)])
             pyr.append(self.gdns[i](J - I_up_conv))
             J = I
         return pyr
@@ -212,6 +211,7 @@ class SteerableWavelet(nn.Module):
     const : float
     Ycosn : torch.Tensor
     """
+
     def __init__(self,
                  stages: int = 4,
                  order: int = 3,
@@ -230,7 +230,8 @@ class SteerableWavelet(nn.Module):
         else:
             self.harmonics = torch.arange(0, order)*2
 
-        self.angles = torch.arange(0, order+1) * math.pi / self.num_orientations
+        self.angles = torch.arange(0, order+1) * \
+            math.pi / self.num_orientations
         self.steer_matrix = fourier.steer_to_harmonics(
             self.harmonics, self.angles, 'sin')
 
@@ -239,7 +240,7 @@ class SteerableWavelet(nn.Module):
             twidth, -twidth/2, func_min=0.0, func_max=1.0, size=10)
         self.Yrcos = torch.sqrt(self.Yrcos)
         self.YIrcos = torch.sqrt(1.0 - self.Yrcos**2)
-        self.Xcosn = math.pi * torch.arange(-2047, 1024+2) / 1024 # (-2*pi:pi]
+        self.Xcosn = math.pi * torch.arange(-2047, 1024+2) / 1024  # (-2*pi:pi]
         self.const = 2**(2*order) * math.factorial(order)**2 \
             / (self.num_orientations * math.factorial(order*2))
         self.Ycosn = math.sqrt(self.const) * torch.cos(self.Xcosn)**order
@@ -316,7 +317,7 @@ class SteerableWavelet(nn.Module):
         return angle, log_rad
 
     def _check_height(self,
-                      size_x : torch.Size) -> bool:
+                      size_x: torch.Size) -> bool:
         """
         Checks if dimensions of image is compatible with height of pyramid.
 
@@ -347,13 +348,13 @@ class SteerableWavelet(nn.Module):
             raise ValueError('Input maximum number of stages is %d but number '
                              'of pyramid stages is %d. Please use larger input '
                              'images or initialise pyramid with different '
-                             'number of stages.'%(max_height, self.stages))
+                             'number of stages.' % (max_height, self.stages))
 
         is_valid = True
         return is_valid
 
     def _complex_number_product(self,
-                                x : torch.Tensor) -> torch.Tensor:
+                                x: torch.Tensor) -> torch.Tensor:
         """
         Multiple tensor with imaginary number.
 
@@ -378,20 +379,20 @@ class SteerableWavelet(nn.Module):
         y: torch.Tensor
             Output tensor.
         """
-        value = (self.num_orientations-1 % 4)
-        if value == 0: # x * 1
+        value = ((self.num_orientations-1) % 4)
+        if value == 0:  # x * 1
             return x
         else:
             real, imag = torch.unbind(x, -1)
-            if value == 1: # x * -j
+            if value == 1:  # x * -j
                 real_new = imag
                 imag_new = -real
-            elif value == 2: # x * -1
+            elif value == 2:  # x * -1
                 real_new = -real
                 imag_new = -imag
-            elif value == 3: # x * j
+            elif value == 3:  # x * j
                 real_new = -imag
-                imag_new  = real
+                imag_new = real
             return torch.stack((real_new, imag_new), -1)
 
     def forward(
@@ -423,13 +424,12 @@ class SteerableWavelet(nn.Module):
         Returns
         -------
         pyramid : Union[List[torch.Tensor], Tensor]
-            List of tensors, where each entry contains the subbands at each
-            stage of the pyramid. The low pass residual is the last element
-            in the pyramid. If ``upsample_output`` is ``True`` then this will
-            be one Tensor where each subband has been upsample to be the same
+            List of tensors, where the first tensor is the high pass residual,
+            and from thereon each entry contains the subbands at each stage of
+            the pyramid. The low pass residual is the last element in the
+            pyramid. If ``upsample_output`` is ``True`` then this will be one
+            Tensor where each subband has been upsample to be the same
             dimensions as the input.
-        hi_pass : torch.Tensor
-            Tensor containing the high pass residual.
         """
         assert self._check_height(x.size())
 
@@ -456,7 +456,11 @@ class SteerableWavelet(nn.Module):
         low_pass = discrete_fourier_image * self.low_mask
         high_pass = discrete_fourier_image * self.high_mask
 
-        pyramid = []
+        # First element in the pyramid will be the high pass residual
+        high_pass_residual = torch.irfft(fourier.ifftshift(
+            high_pass, dim=(-3, -2)), signal_ndim=2, onesided=False)
+        pyramid = [high_pass_residual]
+
         # Intiailised parameters that are going to change each stage
         Xrcos = self.Xrcos
         log_rad = self.log_rad
@@ -472,10 +476,11 @@ class SteerableWavelet(nn.Module):
 
             # Orientation band masks
             angle_masks = torch.stack(
-            [fourier.point_operation_filter(angle, self.Ycosn,
-                origin=a, increment=self.Xcosn[1]-self.Xcosn[0])
-            for a in self.band_angles])
-            fourier_band = (low_pass.permute(3, 0, 1, 2) * angle_masks).unsqueeze(0).permute(0, 2, 3, 4, 1)
+                [fourier.point_operation_filter(angle, self.Ycosn,
+                                                origin=a, increment=self.Xcosn[1]-self.Xcosn[0])
+                 for a in self.band_angles])
+            fourier_band = (low_pass.permute(3, 0, 1, 2) *
+                            angle_masks).unsqueeze(0).permute(0, 2, 3, 4, 1)
             # TODO: computation only works for batch_size=1
             fourier_band = fourier_band * himask
             fourier_band = self._complex_number_product(fourier_band)
@@ -483,8 +488,8 @@ class SteerableWavelet(nn.Module):
             # [batch*bands, height, width, 2] for ifft.
             bands = torch.irfft(fourier.ifftshift(
                 fourier_band.view(-1, fourier_band.size(2),
-                fourier_band.size(3), 2), dim=(-3, -2)), signal_ndim=2,
-                onesided=False)
+                                  fourier_band.size(3), 2), dim=(-3, -2)), signal_ndim=2,
+                                onesided=False)
             # Expand back out to [batch, bands, height, width] after doing
             # inverse fast fourier transform.
             bands = bands.view(x.size(0), self.num_orientations, bands.size(1),
@@ -497,7 +502,7 @@ class SteerableWavelet(nn.Module):
             lodims = [math.ceil((d-0.5)/2) for d in dims]
             loctr = [math.ceil((d+0.5)/2) for d in lodims]
 
-            lostart = [c-l for c,l in zip(ctr, loctr)]
+            lostart = [c-l for c, l in zip(ctr, loctr)]
             loend = [ls+lo for ls, lo in zip(lostart, lodims)]
 
             log_rad = log_rad[lostart[0]:loend[0], lostart[1]:loend[1]]
@@ -506,17 +511,14 @@ class SteerableWavelet(nn.Module):
 
             # Low pass to use in the next stage
             low_mask = fourier.point_operation_filter(
-            log_rad, self.YIrcos, origin=Xrcos[0],
-            increment=Xrcos[1]-Xrcos[0]).to(x.device)
+                log_rad, self.YIrcos, origin=Xrcos[0],
+                increment=Xrcos[1]-Xrcos[0]).to(x.device)
             low_mask = low_mask.view(1, low_mask.size(0), low_mask.size(1), 1)
             low_pass = low_pass * low_mask
 
         low_pass_residual = torch.irfft(fourier.ifftshift(
-                low_pass, dim=(-3, -2)), signal_ndim=2, onesided=False)
+            low_pass, dim=(-3, -2)), signal_ndim=2, onesided=False)
         pyramid.append(low_pass_residual)
-
-        high_pass_residual = torch.irfft(fourier.ifftshift(
-                high_pass, dim=(-3, -2)), signal_ndim=2, onesided=False)
 
         if upsample_output:
             original_size = [high_pass.size(2), high_pass.size(3)]
@@ -525,7 +527,7 @@ class SteerableWavelet(nn.Module):
             ]
             pyramid = torch.cat(pyr_upsample, dim=1)
 
-        return pyramid, high_pass_residual
+        return pyramid
 
 
 class SteerablePyramid(nn.Module):
@@ -560,6 +562,7 @@ class SteerablePyramid(nn.Module):
           that are rotated a different amounts, and optimise only over the
           amount of rotation for each filter.
     """
+
     def __init__(self,
                  stages: int = 4,
                  num_orientations: int = 2,
@@ -653,24 +656,24 @@ class SteerablePyramid(nn.Module):
         Returns
         -------
         pyramid : Union[List[torch.Tensor], Tensor]
-            List of tensors, where each entry contains the subbands at each
-            stage of the pyramid. The low pass residual is the last element
-            in the pyramid. If ``upsample_output`` is ``True`` then this will
-            be one Tensor where each subband has been upsample to be the same
+            List of tensors, where the first tensor is the high pass residual,
+            and from thereon each entry contains the subbands at each stage of
+            the pyramid. The low pass residual is the last element in the
+            pyramid. If ``upsample_output`` is ``True`` then this will be one
+            Tensor where each subband has been upsample to be the same
             dimensions as the input.
-        hi_pass : torch.Tensor
-            Tensor containing the high pass residual.
         """
         if x.dtype != torch.float32:
             raise TypeError('Input x must be of type torch.float32.')
-
-        pyramid = []
 
         padded_x = F.pad(x,
                          pad=conv_utils.pad([x.size(2), x.size(3)], 9, 1),
                          mode='reflect')
         low_pass = F.conv2d(padded_x, self.lo0filt)
         high_pass = F.conv2d(padded_x, self.hi0filt)
+
+        pyramid = []
+        pyramid.append(high_pass)
 
         for h in range(0, self.stages):
             image_size = [low_pass.size(2), low_pass.size(3)]

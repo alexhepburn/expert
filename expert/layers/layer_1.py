@@ -184,10 +184,44 @@ class Layer4(nn.Module):
         self.Hs = self.Hs_ini
         self.Hc = self.Hc_ini
         H_spatial = kernel_s_wavelet_spatial(ind, self.fs, [self.Hs])
+        self.H = H_spatial
+        self.g = 0.6
+        self.b = 500
+        self.pyramid = expert_models.SteerableWavelet(
+            stages=self.ns, order=self.no-1, twidth=self.tw)
 
-    def foward(self, x):
+    def forward(self, x):
         """
         """
+        N = x.size(0)
+        Npatches = x.size(1)
+        d = self.d
+        H = self.H
+        b = torch.ones(self.d, 1) * self.b
+        c_h = torch.ones(self.d, 1) * self.Hc
+        c_h = c_h.repeat(1, Npatches)
+        b = b.repeat(1, Npatches)
+        gamma = self.g
+        beta = []
+
+        yy = torch.zeros(d, Npatches)
+        for i in range(Npatches):
+            xaux = x[:, i].reshape(
+                (int(math.sqrt(N)), int(math.sqrt(N))))
+            yaux = self.pyramid(xaux.unsqueeze(0))
+            yy[:, i] = torch.cat([y.flatten() for y in yaux])
+
+        # dn
+        y = yy
+        sgn = torch.sign(y)
+        y = torch.abs(y)
+
+        e = y ** gamma
+        denom = self.b + torch.mm(H, e)
+        elog = torch.log(y)
+        x = sgn * e / denom
+        xim = x
+        return yy, xim
 
 
 def kernel_s_wavelet_spatial(ind, fs, sigmas_x):
@@ -325,19 +359,18 @@ def make_wavelet_kernel_2(N, ns, no, tw, ns_not_used, resid=1):
     """
     pyr = expert_models.SteerableWavelet(ns, no-1, tw)
     rand_im = torch.randn(N, N)
-    pyramid, high_pass = pyr(rand_im.unsqueeze(0))
-    num_values = sum([stage.numel() for stage in pyramid]) + high_pass.numel()
+    pyramid = pyr(rand_im.unsqueeze(0))
+    num_values = sum([stage.numel() for stage in pyramid])
     W = torch.zeros(num_values, N*N)
 
     for i in range(N*N):
         delta = torch.zeros(N*N, 1)
         delta[i] = 1
-        wd, hpd = pyr(delta.view(1, N, N))
-        wd_vec = torch.cat([high_pass.flatten()] +
-                           [stage.flatten() for stage in wd])
+        wd = pyr(delta.view(1, N, N))
+        wd_vec = torch.cat([stage.flatten() for stage in wd])
         W[:, i] = wd_vec
-    ind = [[high_pass.size(1), high_pass.size(2)]]
-    for i, stage in enumerate(pyramid[:-1]):
+    ind = [[pyramid[0].size(1), pyramid[0].size(2)]]
+    for i, stage in enumerate(pyramid[1:-1]):
         indices = [[stage.size(2), stage.size(3)]] * stage.size(1)
         ind += indices
     ind += [[pyramid[-1].size(1), pyramid[-1].size(2)]]

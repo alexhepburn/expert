@@ -125,7 +125,8 @@ class TestSteerableWavelet():
 
         # Check Tensors of 1
         x = torch.ones(1, 8, 8)
-        pyr, high_pass = self.sw_small.forward(x)
+        pyr = self.sw_small.forward(x)
+        high_pass, pyr = pyr[0], pyr[1:]
         # Correct Tensors
         low_pass_residual = torch.ones(1, 4, 4) * 4.0
         true_high_pass = 1.61e-16 * torch.ones(1, 8, 8)
@@ -140,7 +141,8 @@ class TestSteerableWavelet():
         # Matrix of 0's with 1's in the diagonal elements
         x = torch.zeros(8, 8)
         x = x.fill_diagonal_(1.0).unsqueeze(0)
-        pyr, high_pass = self.sw_small.forward(x)
+        pyr = self.sw_small.forward(x)
+        high_pass, pyr = pyr[0], pyr[1:]
         # Correct Tensors
         low_pass_residual = torch.Tensor([[1.207, 0.500, -0.207, 0.500],
                                           [0.500, 1.207, 0.500, -0.207],
@@ -191,7 +193,8 @@ class TestSteerableWavelet():
         # Test pyramid of height more than 1
         x = torch.zeros(16, 16)
         x = x.fill_diagonal_(1.0).unsqueeze(0)
-        pyr, high_pass = self.sw.forward(x)
+        pyr = self.sw.forward(x)
+        high_pass, pyr = pyr[0], pyr[1:]
         # Correct Tensors
         low_pass_residual = torch.Tensor([[2.4142, 1., -0.4142, 1.],
                                           [1., 2.4142, 1., -0.4142],
@@ -248,7 +251,10 @@ class TestSteerableWavelet():
                    (band_2_3_row, band_2_3_column),
                    (band_2_4_row, band_2_4_column)]
 
-        import numpy as np
+        assert torch.allclose(true_high_pass_row_column,
+                              high_pass[0, 0, :], atol=1e-3)
+        assert torch.allclose(true_high_pass_row_column,
+                              high_pass[0, :, 0], atol=1e-3)
         assert torch.allclose(low_pass_residual, pyr[-1], atol=1e-4)
         for i in range(4):
             row, col = bands_1[i]
