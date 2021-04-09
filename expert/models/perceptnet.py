@@ -108,30 +108,30 @@ class PerceptNet(nn.Module):
 
         if normalisation_layer == expert_divisive_normalisation.GDN:
             # If GDN then make first layer channel independent
-            self.normalisation_1 = normalisation_layer(
+            normalisation_1 = normalisation_layer(
                 dims, apply_independently=True)
         else:
-            self.normalisation_1 = normalisation_layer(dims)
-        self.normalisation_2 = normalisation_layer(dims)
-        self.normalisation_3 = normalisation_layer(6)
-        self.normalisation_4 = normalisation_layer(128)
-        self.conv1 = nn.Conv2d(dims, dims, kernel_size=1, stride=1, padding=1)
-        self.maxpool = nn.MaxPool2d(2)
-        self.conv2 = nn.Conv2d(dims, 6, kernel_size=5, stride=1, padding=1)
-        self.conv3 = nn.Conv2d(6, 128, kernel_size=5, stride=1, padding=1)
+            normalisation_1 = normalisation_layer(dims)
+        normalisation_2 = normalisation_layer(dims)
+        normalisation_3 = normalisation_layer(6)
+        normalisation_4 = normalisation_layer(128)
+        conv1 = nn.Conv2d(dims, dims, kernel_size=1, stride=1, padding=1)
+        maxpool = nn.MaxPool2d(2)
+        conv2 = nn.Conv2d(dims, 6, kernel_size=5, stride=1, padding=1)
+        conv3 = nn.Conv2d(6, 128, kernel_size=5, stride=1, padding=1)
 
         # Called features to be used as feature extraction just like the
         # modles in the torchvision package.
-        self.features = features = nn.Sequential(
-            self.normalisation_1,
-            self.conv1,
-            self.maxpool,
-            self.normalisation_2,
-            self.conv2,
-            self.maxpool,
-            self.normalisation_3,
-            self.conv3,
-            self.normalisation_4)
+        self.features = nn.Sequential(
+            normalisation_1,
+            conv1,
+            maxpool,
+            normalisation_2,
+            conv2,
+            maxpool,
+            normalisation_3,
+            conv3,
+            normalisation_4)
 
     def _validate_input(self,
                         dims: int,

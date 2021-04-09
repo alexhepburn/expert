@@ -30,16 +30,17 @@ class TestPerceptNet():
         assert (issubclass(emp.PerceptNet, nn.Module))
         assert (self.net1.__class__.__bases__[0].__name__ == 'Module')
 
-        assert isinstance(self.net1.normalisation_1, eldn.GDN)
+        assert isinstance(self.net1.features[0], eldn.GDN)
         # check apply_independently
-        assert self.net1.normalisation_1.groups == 3
-        assert isinstance(self.net1.conv1, nn.Conv2d)
-        assert isinstance(self.net1.maxpool, nn.MaxPool2d)
-        assert isinstance(self.net1.normalisation_2, eldn.GDN)
-        assert isinstance(self.net1.conv2, nn.Conv2d)
-        assert isinstance(self.net1.normalisation_3, eldn.GDN)
-        assert isinstance(self.net1.conv3, nn.Conv2d)
-        assert isinstance(self.net1.normalisation_4, eldn.GDN)
+        assert self.net1.features[0].groups == 3
+        assert isinstance(self.net1.features[1], nn.Conv2d)
+        assert isinstance(self.net1.features[2], nn.MaxPool2d)
+        assert isinstance(self.net1.features[3], eldn.GDN)
+        assert isinstance(self.net1.features[4], nn.Conv2d)
+        assert isinstance(self.net1.features[5], nn.MaxPool2d)
+        assert isinstance(self.net1.features[6], eldn.GDN)
+        assert isinstance(self.net1.features[7], nn.Conv2d)
+        assert isinstance(self.net1.features[8], eldn.GDN)
 
         def test_validate_input(self):
             """
