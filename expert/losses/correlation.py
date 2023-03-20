@@ -26,17 +26,21 @@ class PearsonCorrelation(nn.Module):
                 x: torch.Tensor,
                 y: torch.Tensor) -> torch.Tensor:
         """
-        Override the forward function in nn.Modules. Performs Pearson
-        Correlation calculation between ``score`` and ``mos``
+        Performs Pearson Correlation calculation between ``score`` and ``mos``
 
         Parameters
         ----------
         x : torch.Tensor
-            First input vector.
+            First input tensor.
         y : torch.Tensor
-            Second input vector.
+            Second input tensor.
         TODO: dimensions of the input data have to agree, have to be batch wise
               and check for NaN values in the result.
+
+        Returns
+        -------
+        correlation : torch.Tensor
+            Tensor containing correlations.
         """
         x_n = x - torch.mean(x)
         y_n = y - torch.mean(y)

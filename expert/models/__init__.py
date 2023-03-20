@@ -7,5 +7,8 @@ or pre-trained weights can be used.
 # License: new BSD
 
 from expert.models.perceptnet import PerceptNet
+from expert.models.pyramids import (LaplacianPyramid, LaplacianPyramidGDN,
+                                    SteerablePyramid, SteerableWavelet)
 
-__all__ = ['PerceptNet']
+__all__ = ['PerceptNet', 'LaplacianPyramid', 'LaplacianPyramidGDN',
+           'SteerablePyramid', 'SteerableWavelet']
